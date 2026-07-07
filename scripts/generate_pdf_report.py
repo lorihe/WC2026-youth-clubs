@@ -176,7 +176,7 @@ def load_data():
 
         if known:
             durs = [
-                max(0, int(r["end_age_est"]) - int(r["start_age_est"]) + 1)
+                max(0, int(r["end_age_est"]) - int(r["start_age_est"]))
                 for r in known
             ]
             total = sum(durs)
@@ -206,6 +206,11 @@ def load_data():
                 clubs[r["club_name"]]["country"] = r["club_country"].strip()
             if r["club_country"].strip():
                 countries[r["club_country"]]["players"].add(player)
+            # classify local/foreign based on the single club's country
+            if r["club_country"].strip() == home:
+                team_stats[team]["local_unique"].add(player)
+            elif r["club_country"].strip():
+                pass  # foreign club — not locally trained
 
     def top(d, n=20, by_country=False):
         arr = [
@@ -439,9 +444,10 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     story.append(Paragraph("Local-Trained Ratio by National Team", s["section"]))
     story.append(HRFlowable(width="100%", thickness=0.5, color=RULE, spaceAfter=8))
     story.append(Paragraph(
-        "Percentage of each team's tracked starters who spent fewer than 5 years training in a "
-        "foreign country between ages 5 and 16. Sorted from highest to lowest. Players without year "
-        "data are excluded from this count.",
+        "Percentage of each team's tracked starters classified as locally trained. A player is "
+        "locally trained if they have fewer than 5 foreign-country years on record. For players "
+        "with no year data, classification is based solely on their club's country. "
+        "Sorted from highest to lowest.",
         s["body"],
     ))
     story.append(Spacer(1, 0.2 * cm))
