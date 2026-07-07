@@ -58,10 +58,9 @@ TEAM_TO_COUNTRY = {
 
 def compute_coverage(rows: list) -> dict:
     lineups = list(csv.DictReader((DATA / "world_cup_match_lineups.csv").open(encoding="utf-8-sig")))
-    missing = list(csv.DictReader((DATA / "player_youth_training_missing.csv").open(encoding="utf-8-sig")))
 
     unique_matches = len({r["match_id"] for r in lineups})
-    unique_starters = len({(r["player_name"], r["team_name"]) for r in lineups})
+    unique_starters = {(r["player_name"], r["team_name"]) for r in lineups}
 
     dates = sorted(r["match_date"] for r in lineups if r.get("match_date"))
     latest_date_raw = dates[-1] if dates else ""
@@ -82,6 +81,12 @@ def compute_coverage(rows: list) -> dict:
         if not r.get("start_age_est", "").strip() or not r.get("end_age_est", "").strip()
     }
 
+    players_in_training = {(r["player_name"], r["national_team"]) for r in rows}
+    unresolved = sum(
+        1 for (name, team) in unique_starters
+        if (name, team) not in players_in_training
+    )
+
     player_club_counts = collections.Counter(
         (r["player_name"], r["national_team"])
         for r in rows
@@ -95,10 +100,10 @@ def compute_coverage(rows: list) -> dict:
     return {
         "matches": unique_matches,
         "latest_date": latest_date,
-        "starters": unique_starters,
+        "starters": len(unique_starters),
         "with_years": len(players_with_years),
         "fallback": len(players_fallback),
-        "unresolved": len(missing),
+        "unresolved": unresolved,
         "club_rows": len(rows),
         "with_country": sum(1 for r in rows if r.get("club_country", "").strip()),
         "multi_club": sum(1 for c in player_club_counts.values() if c > 1),
@@ -415,11 +420,6 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
             ts3.add("FONTNAME", (3, i), (3, i), "Helvetica-Bold")
     a2t.setStyle(ts3)
     story.append(a2t)
-    story.append(Paragraph(
-        "Source: data/player_youth_training.csv. A player is counted as locally trained only if "
-        "they spent more than 5 years training in their national team's home country (ages 5–16).",
-        s["caption"],
-    ))
 
     # ── Appendix 1 ──
     story.append(PageBreak())
@@ -480,6 +480,15 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
         f"Rows without a country are excluded from country rankings only.",
     ]:
         story.append(Paragraph(f"• {line}", s["bullet"]))
+    story.append(Spacer(1, 0.2 * cm))
+
+    story.append(Paragraph("Source data", s["subsection"]))
+    story.append(Paragraph(
+        "The underlying CSV files used to produce this report are publicly available at: "
+        "<a href=\"https://github.com/lorihe/WC2026-youth-clubs/tree/main/data\" color=\"#1a3a5c\">"
+        "github.com/lorihe/WC2026-youth-clubs/tree/main/data</a>",
+        s["body"],
+    ))
 
     return story
 
