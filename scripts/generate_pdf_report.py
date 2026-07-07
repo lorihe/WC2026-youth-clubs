@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 import collections
 import csv
+import unicodedata
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -70,6 +71,10 @@ TEAM_TO_COUNTRY = {
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def norm(name: str) -> str:
+    """Normalize a name to ASCII for fuzzy matching across encoding variants."""
+    return unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii").lower().strip()
+
 def open_csv(path):
     """Open a CSV trying UTF-8-BOM first, falling back to latin-1."""
     try:
@@ -108,10 +113,10 @@ def compute_coverage(rows: list) -> dict:
         if not r.get("start_age_est", "").strip() or not r.get("end_age_est", "").strip()
     }
 
-    players_in_training = {(r["player_name"], r["national_team"]) for r in rows}
+    training_norm = {(norm(r["player_name"]), r["national_team"]) for r in rows}
     unresolved = sum(
         1 for (name, team) in unique_starters
-        if (name, team) not in players_in_training
+        if (norm(name), team) not in training_norm
     )
 
     player_club_counts = collections.Counter(
@@ -234,9 +239,9 @@ def load_data():
 
     lineups = list(csv.DictReader(open_csv(DATA / "world_cup_match_lineups.csv")))
     unique_starters = {(r["player_name"], r["team_name"]) for r in lineups}
-    players_in_training = {(r["player_name"], r["national_team"]) for r in rows}
+    training_norm = {(norm(r["player_name"]), r["national_team"]) for r in rows}
     unresolved_list = sorted(
-        [(name, team) for (name, team) in unique_starters if (name, team) not in players_in_training],
+        [(name, team) for (name, team) in unique_starters if (norm(name), team) not in training_norm],
         key=lambda x: (x[1], x[0]),
     )
 
