@@ -7,7 +7,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_CSV = ROOT / "data" / "world_cup_match_lineups.csv"
 
 HEADERS = {

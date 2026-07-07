@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from backfill_club_countries import extract_country_from_page, infer_country_from_text, normalize_club_url
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 TRAINING_CSV = ROOT / "data" / "player_youth_training.csv"
 MISSING_CSV = ROOT / "data" / "player_youth_training_missing.csv"
 LOOKUP_CSV = ROOT / "data" / "club_country_lookup.csv"

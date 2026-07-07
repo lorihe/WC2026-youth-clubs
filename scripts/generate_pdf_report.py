@@ -4,6 +4,8 @@ import collections
 import csv
 import unicodedata
 
+import io
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -71,19 +73,40 @@ TEAM_TO_COUNTRY = {
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+# Letters that NFKD does NOT reduce to ASCII (they would otherwise be dropped
+# by the "ignore" pass and break matching), so fold them to a base letter first.
+# Most relevant here: Turkish dotless i (ı), which appears in the lineups but as
+# a plain "i" in the training data.
+_TRANSLIT = str.maketrans({
+    "ı": "i", "İ": "i",
+    "ł": "l", "Ł": "l",
+    "đ": "d", "Đ": "d", "ð": "d",
+    "ø": "o", "Ø": "o",
+    "ħ": "h", "Ħ": "h",
+    "ß": "ss",
+})
+
+
 def norm(name: str) -> str:
     """Normalize a name to ASCII for fuzzy matching across encoding variants."""
+    name = name.translate(_TRANSLIT)
     return unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii").lower().strip()
 
 def open_csv(path):
-    """Open a CSV trying UTF-8-BOM first, falling back to latin-1."""
+    """Open a CSV trying UTF-8-BOM first, falling back to cp1252.
+
+    Reads the full file bytes to detect encoding errors anywhere in the
+    file (not just the first 1024 bytes), then wraps the decoded content
+    in a StringIO so callers get a file-like object as before. cp1252 is
+    preferred over latin-1 as the fallback because it maps the 0x80-0x9F
+    byte range to real characters (š, ž, ...) instead of control codes.
+    """
+    raw = path.read_bytes()
     try:
-        f = path.open(encoding="utf-8-sig")
-        f.read(1024)
-        f.seek(0)
-        return f
+        content = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return path.open(encoding="latin-1")
+        content = raw.decode("cp1252", errors="replace")
+    return io.StringIO(content)
 
 
 # ── data loading ──────────────────────────────────────────────────────────────
@@ -119,11 +142,10 @@ def compute_coverage(rows: list) -> dict:
         if (norm(name), team) not in training_norm
     )
 
-    player_club_counts = collections.Counter(
-        (r["player_name"], r["national_team"])
-        for r in rows
-        if r.get("start_age_est", "").strip() and r.get("end_age_est", "").strip()
-    )
+    player_clubs: dict = collections.defaultdict(set)
+    for r in rows:
+        if r.get("club_name", "").strip():
+            player_clubs[(r["player_name"], r["national_team"])].add(r["club_name"].strip())
     player_countries: dict = collections.defaultdict(set)
     for r in rows:
         if r.get("club_country", "").strip():
@@ -138,7 +160,7 @@ def compute_coverage(rows: list) -> dict:
         "unresolved": unresolved,
         "club_rows": len(rows),
         "with_country": sum(1 for r in rows if r.get("club_country", "").strip()),
-        "multi_club": sum(1 for c in player_club_counts.values() if c > 1),
+        "multi_club": sum(1 for cs in player_clubs.values() if len(cs) > 1),
         "multi_country": sum(1 for cs in player_countries.values() if len(cs) > 1),
     }
 
@@ -157,12 +179,30 @@ def load_data():
         lambda: {"players": set(), "player_equiv": 0.0, "country": ""}
     )
     team_stats: dict[str, dict] = collections.defaultdict(
-        lambda: {"total_unique": set(), "local_unique": set(), "local_weighted": 0.0}
+        lambda: {"total_unique": set(), "local_unique": set()}
     )
 
     for key, recs in per.items():
         player, team = key
         home = TEAM_TO_COUNTRY.get(team, "")
+
+        # Drop exact duplicate rows within a player (same club + country + age
+        # span) so a doubled data row doesn't distort the year-share weighting.
+        # Genuine repeat spells at a club keep distinct age spans and survive.
+        seen = set()
+        deduped = []
+        for r in recs:
+            sig = (
+                r["club_name"].strip(),
+                r["club_country"].strip(),
+                (r["start_age_est"] or "").strip(),
+                (r["end_age_est"] or "").strip(),
+            )
+            if sig not in seen:
+                seen.add(sig)
+                deduped.append(r)
+        recs = deduped
+
         known = [
             r for r in recs
             if (r["start_age_est"] or "").strip() and (r["end_age_est"] or "").strip()
@@ -195,24 +235,25 @@ def load_data():
                 if r["club_country"].strip() == home
             )
             foreign_years = total - local_years
-            local_share = local_years / total if total else 0
-            team_stats[team]["local_weighted"] += local_share
             if foreign_years < 5:
                 team_stats[team]["local_unique"].add(player)
-        elif fallback:
-            r = fallback[0]
+
+        # Fallback rows (no year span) always add a unique-starter credit but
+        # contribute 0 to weighted starters — for every distinct fallback club,
+        # regardless of whether the player also has year-dated rows.
+        for r in fallback:
             clubs[r["club_name"]]["players"].add(player)
             if not clubs[r["club_name"]]["country"] and r["club_country"].strip():
                 clubs[r["club_name"]]["country"] = r["club_country"].strip()
             if r["club_country"].strip():
                 countries[r["club_country"]]["players"].add(player)
-            # classify local/foreign based on the single club's country
-            if r["club_country"].strip() == home:
-                team_stats[team]["local_unique"].add(player)
-            elif r["club_country"].strip():
-                pass  # foreign club — not locally trained
 
-    def top(d, n=20, by_country=False):
+        # For players with no year data at all, classify as locally trained if
+        # any of their fallback clubs is in the home country.
+        if not known and any(r["club_country"].strip() == home for r in fallback):
+            team_stats[team]["local_unique"].add(player)
+
+    def top(d, n=20):
         arr = [
             {
                 "name": k,
@@ -361,7 +402,7 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     story.append(Paragraph("WC 2026 Youth Training Report", s["title"]))
     story.append(HRFlowable(width="100%", thickness=1.5, color=HEADER_BG, spaceAfter=4))
     story.append(Paragraph(
-        "Where the starting-lineup players train between ages 5 and 16?",
+        "Where were the starting XI players trained between ages 5 and 16?",
         s["subtitle"],
     ))
     story.append(Paragraph(f"Data through {cov['matches']} completed matches · {cov['latest_date']}", s["caption"]))
@@ -446,8 +487,8 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     story.append(Paragraph(
         "Percentage of each team's tracked starters classified as locally trained. A player is "
         "locally trained if they have fewer than 5 foreign-country years on record. For players "
-        "with no year data, classification is based solely on their club's country. "
-        "Sorted from highest to lowest.",
+        "with no year data, they are counted as locally trained if any of their clubs is in the "
+        "home country. Sorted from highest to lowest.",
         s["body"],
     ))
     story.append(Spacer(1, 0.2 * cm))
@@ -476,7 +517,7 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     story.append(Paragraph("Data sources", s["subsection"]))
     for line in [
         "<b>Starting XIs</b>: Wikipedia 2026 FIFA World Cup group and knockout-stage pages, "
-        "scraped via BeautifulSoup. Each starting-XI row is linked to its match section URL.",
+        "Each starting-XI row is linked to its match section URL.",
         "<b>Youth-club histories</b>: Wikipedia player infobox 'Youth career' section, "
         "fetched per player. Year spans and club names are parsed directly from the infobox table.",
         "<b>Club countries</b>: Inferred from each linked club's Wikipedia page lead text and "
@@ -509,8 +550,6 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
         "from the player's birth year.",
         "<b>Low (fallback)</b>: only a club name was available with no year span. The club is "
         "counted in unique starters but contributes 0 to weighted starters.",
-        f"<b>Unresolved</b>: {cov['unresolved']} players have no usable youth section on Wikipedia. They are "
-        "excluded from all rankings.",
     ]:
         story.append(Paragraph(f"• {line}", s["bullet"]))
     story.append(Spacer(1, 0.2 * cm))
@@ -523,27 +562,8 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
         "Wikipedia pages.",
         f"Multi-country starters ({cov['multi_country']}) are split across countries; "
         f"multi-club starters ({cov['multi_club']}) are split across clubs.",
-        f"Country backfill covers {cov['with_country']} of {cov['club_rows']} youth-club rows. "
-        f"Rows without a country are excluded from country rankings only.",
     ]:
         story.append(Paragraph(f"• {line}", s["bullet"]))
-    story.append(Spacer(1, 0.2 * cm))
-
-    story.append(Paragraph("Players with no training data", s["subsection"]))
-    story.append(Paragraph(
-        f"The following {len(unresolved_list)} starters have no rows in the youth training table "
-        "and are excluded from all rankings. Youth history still needs to be researched for these players.",
-        s["body"],
-    ))
-    story.append(Spacer(1, 0.15 * cm))
-    ur_hdr = ["Player", "National team"]
-    ur_data = [ur_hdr] + [[name, team] for name, team in unresolved_list]
-    ur_cw = [8 * cm, 5 * cm]
-    ur_t = Table(ur_data, colWidths=ur_cw, hAlign="LEFT")
-    ur_ts = table_style(2)
-    ur_ts.add("FONTNAME", (0, 1), (-1, -1), UNICODE_FONT)
-    ur_t.setStyle(ur_ts)
-    story.append(ur_t)
     story.append(Spacer(1, 0.2 * cm))
 
     story.append(Paragraph("Source data", s["subsection"]))
@@ -551,12 +571,6 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
         "Collected data for this report can be found at: "
         "<a href=\"https://github.com/lorihe/WC2026-youth-clubs/tree/main/data\" color=\"#1a3a5c\">"
         "github.com/lorihe/WC2026-youth-clubs/tree/main/data</a>",
-        s["body"],
-    ))
-    story.append(Paragraph(
-        f"900+ youth clubs weren't easy to trace. "
-        " If you spot an error or have a better source, comments "
-        "are genuinely appreciated.",
         s["body"],
     ))
 

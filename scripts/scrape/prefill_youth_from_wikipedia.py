@@ -8,7 +8,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LINEUPS_CSV = ROOT / "data" / "world_cup_match_lineups.csv"
 OUTPUT_CSV = ROOT / "data" / "player_youth_training.csv"
 MISSING_CSV = ROOT / "data" / "player_youth_training_missing.csv"

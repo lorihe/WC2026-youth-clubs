@@ -8,7 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 TRAINING_CSV = ROOT / "data" / "player_youth_training.csv"
 LOOKUP_CSV = ROOT / "data" / "club_country_lookup.csv"
 
