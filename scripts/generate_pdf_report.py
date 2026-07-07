@@ -162,9 +162,10 @@ def load_data():
                 d for r, d in zip(known, durs)
                 if r["club_country"].strip() == home
             )
+            foreign_years = total - local_years
             local_share = local_years / total if total else 0
             team_stats[team]["local_weighted"] += local_share
-            if local_years > 5:
+            if foreign_years < 5:
                 team_stats[team]["local_unique"].add(player)
         elif fallback:
             r = fallback[0]
@@ -398,8 +399,8 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
     story.append(Paragraph("Local-Trained Ratio by National Team", s["section"]))
     story.append(HRFlowable(width="100%", thickness=0.5, color=RULE, spaceAfter=8))
     story.append(Paragraph(
-        "Percentage of each team's tracked starters who spent more than 5 years training in their "
-        "own country between ages 5 and 16. Sorted from highest to lowest. Players without year "
+        "Percentage of each team's tracked starters who spent fewer than 5 years training in a "
+        "foreign country between ages 5 and 16. Sorted from highest to lowest. Players without year "
         "data are excluded from this count.",
         s["body"],
     ))
