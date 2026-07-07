@@ -8,6 +8,8 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -20,6 +22,18 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+# Register Arial for Unicode player/club names (always available on Windows)
+_ARIAL = Path("C:/Windows/Fonts/arial.ttf")
+_ARIAL_BOLD = Path("C:/Windows/Fonts/arialbd.ttf")
+if _ARIAL.exists():
+    pdfmetrics.registerFont(TTFont("Arial", str(_ARIAL)))
+    pdfmetrics.registerFont(TTFont("Arial-Bold", str(_ARIAL_BOLD)))
+    UNICODE_FONT = "Arial"
+    UNICODE_FONT_BOLD = "Arial-Bold"
+else:
+    UNICODE_FONT = "Helvetica"
+    UNICODE_FONT_BOLD = "Helvetica-Bold"
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
@@ -516,6 +530,7 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     ur_cw = [8 * cm, 5 * cm]
     ur_t = Table(ur_data, colWidths=ur_cw, hAlign="LEFT")
     ur_ts = table_style(2)
+    ur_ts.add("FONTNAME", (0, 1), (-1, -1), UNICODE_FONT)
     ur_t.setStyle(ur_ts)
     story.append(ur_t)
     story.append(Spacer(1, 0.2 * cm))
