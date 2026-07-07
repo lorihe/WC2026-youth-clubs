@@ -315,7 +315,7 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
     story.append(Paragraph("WC 2026 Youth Training Report", s["title"]))
     story.append(HRFlowable(width="100%", thickness=1.5, color=HEADER_BG, spaceAfter=4))
     story.append(Paragraph(
-        "Where did World Cup 2026 starting-lineup players train between ages 5 and 16?",
+        "Where the starting-lineup players train between ages 5 and 16?",
         s["subtitle"],
     ))
     story.append(Paragraph(f"Data through {cov['matches']} completed matches · {cov['latest_date']}", s["caption"]))
@@ -484,15 +484,15 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
 
     story.append(Paragraph("Source data", s["subsection"]))
     story.append(Paragraph(
-        "The underlying CSV files used to produce this report are publicly available at: "
+        "Collected data for this report can be found at: "
         "<a href=\"https://github.com/lorihe/WC2026-youth-clubs/tree/main/data\" color=\"#1a3a5c\">"
         "github.com/lorihe/WC2026-youth-clubs/tree/main/data</a>",
         s["body"],
     ))
     story.append(Paragraph(
-        f"With {cov['unique_clubs']}+ youth clubs across many countries and eras, tracing every "
-        "spell accurately is difficult. If you spot an error or have a better source, corrections "
-        "are genuinely appreciated — please open an issue or pull request on the repository above.",
+        f"900+ youth clubs weren't easy to trace. "
+        " If you spot an error or have a better source, comments "
+        "are genuinely appreciated.",
         s["body"],
     ))
 
