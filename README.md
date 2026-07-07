@@ -53,6 +53,6 @@ As of `2026-07-05`, the FIFA World Cup is still in progress, so an "all matches"
 - `75` completed World Cup matches
 - `1,650` starting-XI rows
 - `754` unique starters
-- `1,270` youth-club rows
-- `965` youth-club rows with a backfilled club country
-- `54` remaining unresolved players that still need manual backfill
+- `1,385` youth-club rows
+- `1,385` youth-club rows with a backfilled club country (100%)
+- `52` remaining unresolved players with no training data

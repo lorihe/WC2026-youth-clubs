@@ -54,10 +54,23 @@ TEAM_TO_COUNTRY = {
 }
 
 
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def open_csv(path):
+    """Open a CSV trying UTF-8-BOM first, falling back to latin-1."""
+    try:
+        f = path.open(encoding="utf-8-sig")
+        f.read(1024)
+        f.seek(0)
+        return f
+    except UnicodeDecodeError:
+        return path.open(encoding="latin-1")
+
+
 # ── data loading ──────────────────────────────────────────────────────────────
 
 def compute_coverage(rows: list) -> dict:
-    lineups = list(csv.DictReader((DATA / "world_cup_match_lineups.csv").open(encoding="utf-8-sig")))
+    lineups = list(csv.DictReader(open_csv(DATA / "world_cup_match_lineups.csv")))
 
     unique_matches = len({r["match_id"] for r in lineups})
     unique_starters = {(r["player_name"], r["team_name"]) for r in lineups}
@@ -112,7 +125,7 @@ def compute_coverage(rows: list) -> dict:
 
 
 def load_data():
-    rows = list(csv.DictReader((DATA / "player_youth_training.csv").open(encoding="utf-8-sig")))
+    rows = list(csv.DictReader(open_csv(DATA / "player_youth_training.csv")))
 
     per = collections.defaultdict(list)
     for r in rows:
@@ -205,7 +218,15 @@ def load_data():
     coverage["unique_countries"] = len(countries)
     coverage["unique_clubs"] = len(clubs)
 
-    return top(countries), top(clubs), local_ratios, coverage
+    lineups = list(csv.DictReader(open_csv(DATA / "world_cup_match_lineups.csv")))
+    unique_starters = {(r["player_name"], r["team_name"]) for r in lineups}
+    players_in_training = {(r["player_name"], r["national_team"]) for r in rows}
+    unresolved_list = sorted(
+        [(name, team) for (name, team) in unique_starters if (name, team) not in players_in_training],
+        key=lambda x: (x[1], x[0]),
+    )
+
+    return top(countries), top(clubs), local_ratios, coverage, unresolved_list
 
 
 # ── styles ────────────────────────────────────────────────────────────────────
@@ -307,7 +328,7 @@ def build_doc(filename):
 
 # ── content ───────────────────────────────────────────────────────────────────
 
-def build_story(s, top_countries, top_clubs, local_ratios, cov):
+def build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list):
     story = []
     W = A4[0] - 4 * cm  # usable width
 
@@ -483,6 +504,22 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
         story.append(Paragraph(f"• {line}", s["bullet"]))
     story.append(Spacer(1, 0.2 * cm))
 
+    story.append(Paragraph("Players with no training data", s["subsection"]))
+    story.append(Paragraph(
+        f"The following {len(unresolved_list)} starters have no rows in the youth training table "
+        "and are excluded from all rankings. Youth history still needs to be researched for these players.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+    ur_hdr = ["Player", "National team"]
+    ur_data = [ur_hdr] + [[name, team] for name, team in unresolved_list]
+    ur_cw = [8 * cm, 5 * cm]
+    ur_t = Table(ur_data, colWidths=ur_cw, hAlign="LEFT")
+    ur_ts = table_style(2)
+    ur_t.setStyle(ur_ts)
+    story.append(ur_t)
+    story.append(Spacer(1, 0.2 * cm))
+
     story.append(Paragraph("Source data", s["subsection"]))
     story.append(Paragraph(
         "Collected data for this report can be found at: "
@@ -504,12 +541,12 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
 
 def main():
     print("Loading data...")
-    top_countries, top_clubs, local_ratios, cov = load_data()
+    top_countries, top_clubs, local_ratios, cov, unresolved_list = load_data()
 
     print("Building PDF...")
     s = make_styles()
     doc = build_doc(OUTPUT)
-    story = build_story(s, top_countries, top_clubs, local_ratios, cov)
+    story = build_story(s, top_countries, top_clubs, local_ratios, cov, unresolved_list)
     doc.build(story)
     print(f"Saved: {OUTPUT}")
 
