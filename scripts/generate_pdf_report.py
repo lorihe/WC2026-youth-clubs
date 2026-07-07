@@ -176,7 +176,7 @@ def load_data():
 
         if known:
             durs = [
-                max(0, int(r["end_age_est"]) - int(r["start_age_est"]))
+                (int(r["end_age_est"]) - int(r["start_age_est"])) or 0.5
                 for r in known
             ]
             total = sum(durs)
@@ -236,7 +236,7 @@ def load_data():
             "local": local,
             "pct": pct,
         })
-    local_ratios.sort(key=lambda x: (-x["pct"], x["team"]))
+    local_ratios.sort(key=lambda x: (-x["pct"], -x["local"], x["team"]))
 
     coverage = compute_coverage(rows)
     coverage["unique_countries"] = len(countries)
