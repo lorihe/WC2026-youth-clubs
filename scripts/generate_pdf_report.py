@@ -489,6 +489,12 @@ def build_story(s, top_countries, top_clubs, local_ratios, cov):
         "github.com/lorihe/WC2026-youth-clubs/tree/main/data</a>",
         s["body"],
     ))
+    story.append(Paragraph(
+        f"With {cov['unique_clubs']}+ youth clubs across many countries and eras, tracing every "
+        "spell accurately is difficult. If you spot an error or have a better source, corrections "
+        "are genuinely appreciated — please open an issue or pull request on the repository above.",
+        s["body"],
+    ))
 
     return story
 
